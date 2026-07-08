@@ -17,5 +17,17 @@ resource "helm_release" "ingress_nginx" {
     }
   ]
 
+  values = [<<-EOT
+    controller:
+      metrics:
+        enabled: true
+        serviceMonitor:
+          enabled: true
+          namespace: monitoring
+          additionalLabels:
+            release: kube-prometheus-stack
+  EOT
+  ]
+
   depends_on = [module.eks_mng]
 }
