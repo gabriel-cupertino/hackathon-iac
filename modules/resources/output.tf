@@ -13,6 +13,11 @@ output "dynamodb_volunteers_table" {
   value       = aws_dynamodb_table.solidarytech_volunteers.name
 }
 
+output "donation_db_arn" {
+  description = "ARN da instância RDS do donation-service para replicação cross-region"
+  value       = aws_db_instance.postgres_donation_service.arn
+}
+
 output "donation_sqs_url" {
   description = "SQS queue URL for donation-service"
   value       = aws_sqs_queue.solidary_donations.url

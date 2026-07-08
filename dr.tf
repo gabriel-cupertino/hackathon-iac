@@ -162,7 +162,99 @@ resource "aws_ecr_replication_configuration" "dr_replication" {
 data "aws_caller_identity" "current" {}
 
 # --- RDS Read Replica donation-service na região DR ---
-# Nota: cross-region read replica requer snapshot da instância primária
+# Cross-region replica: garante RPO de 1h para dados de doações
+resource "aws_db_instance" "dr_donation_replica" {
+  count    = var.dr_enabled ? 1 : 0
+  provider = aws.dr
+
+  identifier          = "${var.project_name}-dr-donation-replica"
+  replicate_source_db = module.resources.donation_db_arn
+  instance_class      = "db.t3.micro"
+
+  skip_final_snapshot = true
+  publicly_accessible = false
+
+  tags = merge(local.tags, { Name = "${var.project_name}-dr-donation-replica" })
+}
+
+# --- ArgoCD + Applications no cluster DR ---
+# Instalado via local-exec após o node group DR estar pronto
+resource "null_resource" "dr_argocd_setup" {
+  count = var.dr_enabled ? 1 : 0
+
+  triggers = {
+    cluster_id = aws_eks_cluster.dr_eks_cluster[0].id
+  }
+
+  provisioner "local-exec" {
+    command = <<-EOT
+      set -e
+      echo "Configurando kubeconfig para cluster DR..."
+      aws eks update-kubeconfig \
+        --name ${aws_eks_cluster.dr_eks_cluster[0].name} \
+        --region ${var.dr_region} \
+        --alias solidarytech-dr
+
+      echo "Instalando ArgoCD no cluster DR..."
+      helm repo add argo https://argoproj.github.io/argo-helm --force-update
+      helm upgrade --install argocd argo/argo-cd \
+        --version 5.51.6 \
+        --namespace argocd \
+        --create-namespace \
+        --kube-context solidarytech-dr \
+        --set dex.enabled=false \
+        --set notifications.enabled=false \
+        --set applicationset.enabled=false \
+        --wait --timeout 8m
+
+      echo "Configurando secret do repositório GitOps..."
+      kubectl --context solidarytech-dr apply -f - <<'YAML'
+      apiVersion: v1
+      kind: Secret
+      metadata:
+        name: gitops-repo-secret
+        namespace: argocd
+        labels:
+          argocd.argoproj.io/secret-type: repository
+      stringData:
+        type: git
+        url: https://github.com/gabriel-cupertino/hackathon-gitops.git
+        username: gabriel-cupertino
+        password: ${var.gitops_pat}
+      YAML
+
+      echo "Criando ArgoCD Applications no cluster DR..."
+      for SVC in ngo-service donation-service volunteer-service; do
+        kubectl --context solidarytech-dr apply -f - <<YAML
+      apiVersion: argoproj.io/v1alpha1
+      kind: Application
+      metadata:
+        name: $SVC
+        namespace: argocd
+      spec:
+        project: default
+        source:
+          repoURL: https://github.com/gabriel-cupertino/hackathon-gitops.git
+          targetRevision: HEAD
+          path: $SVC
+        destination:
+          server: https://kubernetes.default.svc
+          namespace: $SVC
+        syncPolicy:
+          automated:
+            prune: true
+            selfHeal: true
+          syncOptions:
+            - CreateNamespace=true
+      YAML
+      done
+
+      echo "DR cluster configurado com ArgoCD e 3 Applications."
+    EOT
+  }
+
+  depends_on = [aws_eks_node_group.dr_eks_mng]
+}
 
 output "dr_cluster_name" {
   value       = var.dr_enabled ? aws_eks_cluster.dr_eks_cluster[0].name : "DR not enabled"

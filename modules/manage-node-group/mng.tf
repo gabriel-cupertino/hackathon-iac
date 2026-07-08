@@ -2,6 +2,18 @@ data "aws_iam_role" "labrole" {
   name = "LabRole"
 }
 
+resource "aws_launch_template" "eks_node" {
+  name = "${var.project_name}-node-template"
+
+  metadata_options {
+    http_endpoint               = "enabled"
+    http_tokens                 = "optional"
+    http_put_response_hop_limit = 2
+  }
+
+  tags = var.tags
+}
+
 resource "aws_eks_node_group" "eks_manage_node_group" {
   cluster_name    = var.cluster_name
   node_group_name = "${var.project_name}-node_group"
@@ -25,6 +37,11 @@ resource "aws_eks_node_group" "eks_manage_node_group" {
     desired_size = 2
     max_size     = 4
     min_size     = 1
+  }
+
+  launch_template {
+    id      = aws_launch_template.eks_node.id
+    version = aws_launch_template.eks_node.latest_version
   }
 }
 

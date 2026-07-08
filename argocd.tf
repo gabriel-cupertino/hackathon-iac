@@ -118,3 +118,30 @@ resource "kubectl_manifest" "argocd_app_volunteer" {
 
   depends_on = [helm_release.argocd, kubernetes_secret_v1.argocd_gitops_repo]
 }
+
+resource "kubectl_manifest" "argocd_app_grafana_dashboards" {
+  yaml_body = <<-YAML
+    apiVersion: argoproj.io/v1alpha1
+    kind: Application
+    metadata:
+      name: grafana-dashboards
+      namespace: argocd
+    spec:
+      project: default
+      source:
+        repoURL: https://github.com/gabriel-cupertino/hackathon-gitops.git
+        targetRevision: HEAD
+        path: grafana-dashboards
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: monitoring
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=false
+  YAML
+
+  depends_on = [helm_release.argocd, kubernetes_secret_v1.argocd_gitops_repo]
+}
