@@ -92,6 +92,78 @@ resource "aws_subnet" "dr_priv_subnet_1b" {
   })
 }
 
+# --- Roteamento DR ---
+
+resource "aws_eip" "dr_nat_eip" {
+  count    = var.dr_enabled ? 1 : 0
+  provider = aws.dr
+  domain   = "vpc"
+  tags     = merge(local.tags, { Name = "${var.project_name}-dr-nat-eip" })
+}
+
+resource "aws_nat_gateway" "dr_ngw" {
+  count         = var.dr_enabled ? 1 : 0
+  provider      = aws.dr
+  allocation_id = aws_eip.dr_nat_eip[0].id
+  subnet_id     = aws_subnet.dr_pub_subnet_1a[0].id
+  tags          = merge(local.tags, { Name = "${var.project_name}-dr-ngw" })
+  depends_on    = [aws_internet_gateway.dr_igw]
+}
+
+resource "aws_route_table" "dr_pub_rt" {
+  count    = var.dr_enabled ? 1 : 0
+  provider = aws.dr
+  vpc_id   = aws_vpc.dr_vpc[0].id
+
+  route {
+    cidr_block = "0.0.0.0/0"
+    gateway_id = aws_internet_gateway.dr_igw[0].id
+  }
+
+  tags = merge(local.tags, { Name = "${var.project_name}-dr-pub-rt" })
+}
+
+resource "aws_route_table" "dr_priv_rt" {
+  count    = var.dr_enabled ? 1 : 0
+  provider = aws.dr
+  vpc_id   = aws_vpc.dr_vpc[0].id
+
+  route {
+    cidr_block     = "0.0.0.0/0"
+    nat_gateway_id = aws_nat_gateway.dr_ngw[0].id
+  }
+
+  tags = merge(local.tags, { Name = "${var.project_name}-dr-priv-rt" })
+}
+
+resource "aws_route_table_association" "dr_pub_1a" {
+  count          = var.dr_enabled ? 1 : 0
+  provider       = aws.dr
+  subnet_id      = aws_subnet.dr_pub_subnet_1a[0].id
+  route_table_id = aws_route_table.dr_pub_rt[0].id
+}
+
+resource "aws_route_table_association" "dr_pub_1b" {
+  count          = var.dr_enabled ? 1 : 0
+  provider       = aws.dr
+  subnet_id      = aws_subnet.dr_pub_subnet_1b[0].id
+  route_table_id = aws_route_table.dr_pub_rt[0].id
+}
+
+resource "aws_route_table_association" "dr_priv_1a" {
+  count          = var.dr_enabled ? 1 : 0
+  provider       = aws.dr
+  subnet_id      = aws_subnet.dr_priv_subnet_1a[0].id
+  route_table_id = aws_route_table.dr_priv_rt[0].id
+}
+
+resource "aws_route_table_association" "dr_priv_1b" {
+  count          = var.dr_enabled ? 1 : 0
+  provider       = aws.dr
+  subnet_id      = aws_subnet.dr_priv_subnet_1b[0].id
+  route_table_id = aws_route_table.dr_priv_rt[0].id
+}
+
 # --- EKS DR ---
 
 data "aws_iam_role" "labrole_dr" {
