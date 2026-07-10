@@ -88,3 +88,25 @@ resource "kubernetes_secret_v1" "volunteer_db_secret_host" {
 
   type = "Opaque"
 }
+
+# volunteer-service: credenciais AWS da sessão atual (AWS Academy expira a cada sessão)
+# Recriado automaticamente a cada terraform apply com as credenciais frescas da sessão
+resource "null_resource" "volunteer_aws_credentials" {
+  depends_on = [kubernetes_namespace_v1.volunteer-service]
+
+  triggers = {
+    always_run = timestamp()
+  }
+
+  provisioner "local-exec" {
+    command = <<-EOT
+      kubectl create secret generic aws-credentials \
+        --from-literal=AWS_ACCESS_KEY_ID="$AWS_ACCESS_KEY_ID" \
+        --from-literal=AWS_SECRET_ACCESS_KEY="$AWS_SECRET_ACCESS_KEY" \
+        --from-literal=AWS_SESSION_TOKEN="$AWS_SESSION_TOKEN" \
+        --from-literal=AWS_REGION="${data.aws_region.current.id}" \
+        -n volunteer-service \
+        --dry-run=client -o yaml | kubectl apply -f -
+    EOT
+  }
+}

@@ -29,5 +29,5 @@ resource "helm_release" "ingress_nginx" {
   EOT
   ]
 
-  depends_on = [module.eks_mng]
+  depends_on = [module.eks_mng, helm_release.kube_prometheus_stack]
 }
