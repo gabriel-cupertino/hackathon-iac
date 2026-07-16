@@ -325,16 +325,17 @@ resource "kubectl_manifest" "alert_http_5xx" {
           rules:
             - alert: HighHTTP5xxRate
               expr: >
-                sum(rate(http_requests_total{job=~".*-service",status=~"5.."}[5m])) by (job)
+                sum(rate(donation_http_requests_total{path!="/health",status=~"5.."}[5m]))
                 /
-                sum(rate(http_requests_total{job=~".*-service"}[5m])) by (job)
+                sum(rate(donation_http_requests_total{path!="/health"}[5m]))
                 > 0.05
-              for: 2m
+              for: 1m
               labels:
                 severity: critical
+                service: donation-service
               annotations:
-                summary: "Alta taxa de erros HTTP 5xx no {{ $labels.job }}"
-                description: "Serviço {{ $labels.job }} com taxa de erros 5xx acima de 5% (atual: {{ $value | humanizePercentage }})"
+                summary: "Alta taxa de erros HTTP 5xx no donation-service"
+                description: "donation-service com taxa de erros 5xx acima de 5% (atual: {{ $value | humanizePercentage }})"
   YAML
 
   depends_on = [helm_release.kube_prometheus_stack]
@@ -358,9 +359,9 @@ resource "kubectl_manifest" "alert_donation_slo" {
             - alert: DonationServiceHighLatency
               expr: >
                 histogram_quantile(0.99,
-                  sum(rate(http_request_duration_seconds_bucket{job="donation-service"}[5m])) by (le)
+                  sum(rate(donation_http_request_duration_seconds_bucket{path!="/health"}[5m])) by (le)
                 ) > 0.3
-              for: 5m
+              for: 1m
               labels:
                 severity: critical
                 service: donation-service
@@ -371,11 +372,11 @@ resource "kubectl_manifest" "alert_donation_slo" {
 
             - alert: DonationServiceHighErrorRate
               expr: >
-                sum(rate(http_requests_total{job="donation-service",status=~"5.."}[5m]))
+                sum(rate(donation_http_requests_total{path!="/health",status=~"5.."}[5m]))
                 /
-                sum(rate(http_requests_total{job="donation-service"}[5m]))
+                sum(rate(donation_http_requests_total{path!="/health"}[5m]))
                 > 0.001
-              for: 5m
+              for: 1m
               labels:
                 severity: critical
                 service: donation-service
