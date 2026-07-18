@@ -235,6 +235,44 @@ data "aws_caller_identity" "current" {}
 
 # --- RDS Read Replica donation-service na região DR ---
 # Cross-region replica: garante RPO de 1h para dados de doações
+
+# Subnet group nas subnets privadas do DR — sem isso a réplica cai na default VPC
+# de us-west-2 e o cluster DR (na dr_vpc) não conseguiria alcançá-la.
+resource "aws_db_subnet_group" "dr_donation" {
+  count      = var.dr_enabled ? 1 : 0
+  provider   = aws.dr
+  name       = "${var.project_name}-dr-donation-subnetgroup"
+  subnet_ids = [aws_subnet.dr_priv_subnet_1a[0].id, aws_subnet.dr_priv_subnet_1b[0].id]
+
+  tags = merge(local.tags, { Name = "${var.project_name}-dr-donation-subnetgroup" })
+}
+
+# SG do RDS DR — libera Postgres (5432) apenas de dentro da VPC do DR (cluster EKS)
+resource "aws_security_group" "dr_rds_sg" {
+  count       = var.dr_enabled ? 1 : 0
+  provider    = aws.dr
+  name        = "${var.project_name}-dr-rds-sg"
+  description = "Postgres access from DR VPC only"
+  vpc_id      = aws_vpc.dr_vpc[0].id
+
+  ingress {
+    description = "PostgreSQL from DR VPC"
+    from_port   = 5432
+    to_port     = 5432
+    protocol    = "tcp"
+    cidr_blocks = [aws_vpc.dr_vpc[0].cidr_block]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = merge(local.tags, { Name = "${var.project_name}-dr-rds-sg" })
+}
+
 resource "aws_db_instance" "dr_donation_replica" {
   count    = var.dr_enabled ? 1 : 0
   provider = aws.dr
@@ -242,6 +280,9 @@ resource "aws_db_instance" "dr_donation_replica" {
   identifier          = "${var.project_name}-dr-donation-replica"
   replicate_source_db = module.resources.donation_db_arn
   instance_class      = "db.t3.micro"
+
+  db_subnet_group_name   = aws_db_subnet_group.dr_donation[0].name
+  vpc_security_group_ids = [aws_security_group.dr_rds_sg[0].id]
 
   skip_final_snapshot = true
   publicly_accessible = false
