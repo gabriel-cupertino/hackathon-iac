@@ -80,7 +80,7 @@ resource "helm_release" "kube_prometheus_stack" {
                 send_resolved: true
             slack_configs:
               - api_url: "${var.slack_webhook_url}"
-                channel: "#solidarytech-alerts"
+                channel: "#solidary-tech-incidentes"
                 title: "[{{ .Status | toUpper }}] {{ .GroupLabels.alertname }}"
                 text: "{{ range .Alerts }}*{{ .Annotations.summary }}*\n{{ .Annotations.description }}\n{{ end }}"
                 send_resolved: true
@@ -92,8 +92,7 @@ resource "helm_release" "kube_prometheus_stack" {
           receiver: "null"
           routes:
             - matchers:
-                - name: severity
-                  value: critical
+                - 'severity = "critical"'
               receiver: solidarytech
 
     kube-state-metrics:
