@@ -49,7 +49,7 @@ provider "kubectl" {
   }
 }
 
-# Provider para Disaster Recovery (us-west-2 por padrão)
+# Provider para Disaster Recovery (us-west-2)
 provider "aws" {
   alias  = "dr"
   region = var.dr_region
